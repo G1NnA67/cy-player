@@ -11,6 +11,7 @@
 - 左下角 **Language / 语言** 可即时切换 English / 简体中文，并自动记住选择。首次启动默认英文；切换时保留播放状态和下载任务。
 - 拖入或选择本地视频；播放、暂停、进度拖动、音量、倍速、全屏。
 - 选择文件内的音轨和内嵌字幕。
+- 补充 AV1 软件解码，让没有 AV1 硬件解码能力的 Mac 也能播放该格式。
 - 粘贴 YouTube、youtu.be、Bilibili 或 b23.tv 链接，选择画质和保存位置。
 - 下载独立运行，支持进度显示、取消、失败提示，以及下载完成后播放。
 - 一次下载一个视频；未完成的 `.part` 文件保留，可由 yt-dlp 尝试续传。
@@ -21,13 +22,13 @@
 
 双击上一级文件夹内的 `CY Player.app`。保留整个“视频播放器”文件夹，不要单独移动 `.app`：正式应用位于 `dist`，顶层入口链接到它；Node.js、缓存和设置保留在同一根目录。备用启动方式使用独立 Python 环境。
 
-备用方式：双击 `启动播放器.command`。
+备用方式：双击 `启动播放器.command`，它会打开同一个打包应用。
 
 所有为本项目新增的运行环境、依赖、缓存、构建文件均位于该文件夹。程序自己的设置保存在 `cache/settings.json`，下载默认位于 `downloads`。macOS 自行维护的系统日志、应用注册记录不属于项目可控制的文件。
 
 ## 从源码运行
 
-需要 Python 3.12+；当前本机版本面向 Apple Silicon、macOS 13+。
+需要 Python 3.12+；当前本机版本面向 Apple Silicon、macOS 13.5+。
 
 ```sh
 python3 -m venv .venv
@@ -38,7 +39,7 @@ python app.py
 
 本机 `project` 布局下，根目录为源码目录的上一级；普通 GitHub 克隆目录则以源码目录自身为根目录。可通过 `YINGZHOU_ROOT` 明确指定运行数据根目录。首次运行会在根目录创建 `cache`、`tmp`、`runtime/tools` 和 `downloads`。
 
-YouTube 的完整解析还需要 Node.js 20+，放到根目录下的 `runtime/tools/node`。本机交付已包含 Node.js。FFmpeg 由 imageio-ffmpeg 包提供，首次下载时创建 `runtime/tools/ffmpeg` 链接，不进行全局安装。
+YouTube 的完整解析还需要 Node.js 20+，放到根目录下的 `runtime/tools/node`。本机交付已包含 Node.js。下载处理改用从已记录源码编译的 FFmpeg 和 ffprobe，源码运行时位于 `runtime/media-tools`；打包应用使用应用内部工具，忽略旧 `runtime/tools/ffmpeg` 链接。全新源码目录请先按 [构建说明](tools/README.md) 准备工具，不进行全局安装。
 
 ## 快捷键
 
@@ -76,7 +77,7 @@ YouTube 的完整解析还需要 Node.js 20+，放到根目录下的 `runtime/to
 
 适合提交到 GitHub 的是本目录中的源代码。不要提交上一级的 `runtime`、`cache`、`tmp`、下载视频或个人设置。
 
-第三方组件及许可证入口见 `THIRD_PARTY.md`。本项目尚未选定自己的开源许可证；公开发布前应由项目所有者决定。
+第三方组件及许可证入口见 `THIRD_PARTY.md`。本项目原创代码采用 **GPL-3.0-or-later**，完整条款见 [LICENSE](LICENSE)，授权声明见 [COPYRIGHT](COPYRIGHT)。第三方组件保留各自许可。
 
 ## 0.3.0 下载更新
 
@@ -87,3 +88,11 @@ YouTube 的完整解析还需要 Node.js 20+，放到根目录下的 `runtime/to
 - 取消时保留已验证片段；再次选择同一链接和下载类型可尝试续传。
 
 ![Audio-only download](docs/download-audio-zh.png)
+
+## 精简打包
+
+`build_hooks/` 在收集依赖时排除未使用的 PDF 和屏幕虚拟键盘插件，保留 Mac 原生输入和播放组件。`build_mac.sh` 可通过 `CY_BUILD_DIST` 指定独立构建输出目录（绝对路径），避免覆盖现用应用。
+
+## 0.3.1 视频格式选择
+
+下载前可在画质旁选择 **MP4、MKV 或 WebM**。默认 MP4，关闭软件后记住选择。保留源视频编码，不重新压缩画质；WebM 需要视频源提供兼容的音视频流，不支持所选画质和格式时会提示更换。仅音频仍保存为 MP3。同一视频的不同格式可以保存在同一文件夹；未完成的下载位于 `.cy-downloads`，再次选择相同格式时可尝试续传。

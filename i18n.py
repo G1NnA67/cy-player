@@ -1,6 +1,10 @@
 """Application-owned text. Media titles, file paths and upstream diagnostics stay intact."""
 LANGUAGES = {"en": "English", "zh": "简体中文"}
 ENGLISH = {
+    "视频格式": "Format",
+    "无效的视频格式。": "Invalid video format.",
+    "MP4 常用；MKV 支持更多编码；WebM 需要视频源支持。保留原始编码，不重新压缩画质。": "MP4 is widely used; MKV supports more codecs; WebM requires source support. Original codecs are kept without re-encoding.",
+    "视频源没有所选画质和格式的组合，请换一种格式或画质。": "This source does not offer the selected quality and format together. Try another format or quality.",
     "下载内容": "Download",
     "视频＋声音": "Video + audio",
     "仅音频（MP3）": "Audio only (MP3)",

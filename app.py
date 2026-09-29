@@ -12,7 +12,7 @@ from core import APP_NAME, VERSION, root_dir, prepare_environment, read_settings
 if __name__ == "__main__" and "--download-worker" in sys.argv:
     from download_worker import run
     i = sys.argv.index("--download-worker")
-    raise SystemExit(run(*sys.argv[i + 1:i + 5]))
+    raise SystemExit(run(*sys.argv[i + 1:i + 6]))
 
 from PySide6.QtCore import Qt, QUrl, QProcess, QTimer, Signal, QEvent
 from PySide6.QtGui import QDesktopServices, QFont, QKeySequence, QShortcut, QIcon
@@ -106,7 +106,7 @@ class PlayerWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(QIcon(str(Path(__file__).parent / "icon.png")))
         self.resize(1140, 790)
-        self.setMinimumSize(960, 700)
+        self.setMinimumSize(960, 790)
         self.setAcceptDrops(True)
         self.current_file = None
         self.download_result = None
@@ -363,11 +363,28 @@ class PlayerWindow(QMainWindow):
             self.quality.addItem(self.t(text), data)
         self.quality.setCurrentIndex(1)
         row.addWidget(self.quality)
+        self.video_format_label = self.make_label("视频格式", "muted")
+        row.addWidget(self.video_format_label)
+        self.video_format = QComboBox()
+        for value in ("mp4", "mkv", "webm"):
+            self.video_format.addItem(value.upper() if value != "webm" else "WebM", value)
+        saved_format = self.video_format.findData(self.settings.get("video_format", "mp4"))
+        self.video_format.setCurrentIndex(max(0, saved_format))
+        row.addWidget(self.video_format)
+        row.addStretch()
+        form.addLayout(row)
+        row = QHBoxLayout()
         row.addStretch()
         self.start_button = self.make_button("↓ 开始下载", self.start_download, True)
         row.addWidget(self.start_button)
         form.addLayout(row)
-        form.addWidget(self.make_label("仅音频保存为 MP3；有独立音轨时不下载画面。", "muted", True))
+        self.video_format_hint = self.make_label("MP4 常用；MKV 支持更多编码；WebM 需要视频源支持。保留原始编码，不重新压缩画质。", "muted", True)
+        form.addWidget(self.video_format_hint)
+        self.audio_hint = self.make_label("仅音频保存为 MP3；有独立音轨时不下载画面。", "muted", True)
+        form.addWidget(self.audio_hint)
+        self.audio_hint.hide()
+        for widget in (self.url, self.folder, self.download_type, self.quality, self.video_format, self.start_button):
+            widget.setMinimumHeight(42)
         layout.addWidget(card)
         status_card = QFrame()
         status_card.setObjectName("card")
@@ -575,7 +592,7 @@ class PlayerWindow(QMainWindow):
         process.readyReadStandardError.connect(lambda: self.collect_stderr(process))
         process.finished.connect(self.worker_finished)
         process.errorOccurred.connect(self.worker_error)
-        args = ["--download-worker", url, str(folder), self.quality.currentData(), self.active_download_type]
+        args = ["--download-worker", url, str(folder), self.quality.currentData(), self.active_download_type, self.video_format.currentData()]
         if not getattr(sys, "frozen", False):
             args.insert(0, str(Path(__file__).resolve()))
         process.setWorkingDirectory(str(self.root))
@@ -585,6 +602,7 @@ class PlayerWindow(QMainWindow):
         for widget in (self.start_button, self.url, self.choose_folder_button, self.download_type):
             widget.setEnabled(not busy)
         self.quality.setEnabled(not busy and self.download_type.currentData() == "video")
+        self.video_format.setEnabled(not busy and self.download_type.currentData() == "video")
         self.cancel_button.setEnabled(busy)
 
     def update_download_type(self):
@@ -592,6 +610,11 @@ class PlayerWindow(QMainWindow):
         self.quality.setEnabled(video and self.process is None)
         self.quality_label.setVisible(video)
         self.quality.setVisible(video)
+        self.video_format.setEnabled(video and self.process is None)
+        self.video_format_label.setVisible(video)
+        self.video_format.setVisible(video)
+        self.video_format_hint.setVisible(video)
+        self.audio_hint.setVisible(not video)
 
     def collect_stderr(self, process):
         message = bytes(process.readAllStandardError()).decode("utf-8", "replace").strip()
@@ -684,7 +707,9 @@ class PlayerWindow(QMainWindow):
                 self.error_details_key = self.last_worker_error_key
                 self.details_button.setEnabled(True)
                 lower = reason.lower()
-                if any(word in lower for word in ("sign in", "login", "cookies", "bot", "登录")):
+                if "requested format is not available" in lower:
+                    summary = "视频源没有所选画质和格式的组合，请换一种格式或画质。"
+                elif any(word in lower for word in ("sign in", "login", "cookies", "bot", "登录")):
                     summary = "网站要求登录或验证。第一版尚未接入登录，可换一条公开视频链接重试。"
                 elif any(word in lower for word in ("timed out", "timeout", "resolve", "connection", "network")):
                     summary = "连接视频网站失败，请检查网络后重试。"
@@ -759,6 +784,7 @@ class PlayerWindow(QMainWindow):
         self.settings["language"] = self.language
         self.settings["volume"] = self.audio.volume()
         self.settings["download_folder"] = self.folder.text()
+        self.settings["video_format"] = self.video_format.currentData()
         try:
             write_settings(self.settings)
         except OSError:

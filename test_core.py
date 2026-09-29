@@ -1,5 +1,8 @@
 import unittest
-from core import validate_url, timestamp
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from core import validate_url, timestamp, ffmpeg_executable
 
 class CoreTests(unittest.TestCase):
     def test_allowed_sites_and_short_links(self):
@@ -21,6 +24,27 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(timestamp(65000), "01:05")
         self.assertEqual(timestamp(3601000), "1:00:01")
         self.assertEqual(timestamp(-100), "00:00")
+
+    def test_source_ffmpeg_ignores_old_runtime_link(self):
+        with tempfile.TemporaryDirectory() as temp, patch('core.root_dir', return_value=Path(temp)):
+            root = Path(temp)
+            (root / 'runtime/tools').mkdir(parents=True)
+            legacy = root / 'runtime/tools/ffmpeg'
+            legacy.symlink_to('/missing-old-imageio-binary')
+            with self.assertRaises(FileNotFoundError):
+                ffmpeg_executable()
+            tool = root / 'runtime/media-tools/ffmpeg'
+            tool.parent.mkdir()
+            tool.write_bytes(b'test fixture')
+            self.assertEqual(ffmpeg_executable(), tool)
+            self.assertTrue(legacy.is_symlink())
+
+    def test_frozen_ffmpeg_comes_from_current_bundle(self):
+        with tempfile.TemporaryDirectory() as temp, patch('core.sys.frozen', True, create=True), patch('core.sys._MEIPASS', temp, create=True):
+            tool = Path(temp) / 'media-tools/ffmpeg'
+            tool.parent.mkdir()
+            tool.write_bytes(b'test fixture')
+            self.assertEqual(ffmpeg_executable(), tool)
 
 if __name__ == "__main__":
     unittest.main()

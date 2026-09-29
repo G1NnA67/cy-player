@@ -21,7 +21,31 @@ class QuietLogger:
         pass
 
 
-def run(url: str, destination: str, quality: str, media_type: str = "video") -> int:
+def format_options(quality: str, media_type: str, video_format: str) -> dict:
+    if quality not in ("best", "1080", "720"):
+        raise UserFacingError("无效的画质选项。")
+    if media_type not in ("video", "audio"):
+        raise UserFacingError("无效的下载类型。")
+    if video_format not in ("mp4", "mkv", "webm"):
+        raise UserFacingError("无效的视频格式。")
+    if media_type == "audio":
+        return {
+            "format": "bestaudio/best", "final_ext": "mp3",
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        }
+    height = "" if quality == "best" else f"[height<={quality}]"
+    if video_format == "mkv":
+        selector = f"bv*{height}+ba/b{height}"
+    else:
+        audio_ext = "m4a" if video_format == "mp4" else "webm"
+        selector = f"bv{height}[ext={video_format}]+ba[ext={audio_ext}]/b{height}[ext={video_format}]"
+    return {
+        "format": selector, "merge_output_format": video_format, "final_ext": video_format,
+        "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": video_format}],
+    }
+
+
+def run(url: str, destination: str, quality: str, media_type: str = "video", video_format: str = "mkv") -> int:
     prepare_environment()
     try:
         os.setsid()  # Cancel the worker and any FFmpeg child together.
@@ -31,10 +55,7 @@ def run(url: str, destination: str, quality: str, media_type: str = "video") -> 
         url = validate_url(url)
         folder = Path(destination).expanduser().resolve()
         folder.mkdir(parents=True, exist_ok=True)
-        if quality not in ("best", "1080", "720"):
-            raise UserFacingError("无效的画质选项。")
-        if media_type not in ("video", "audio"):
-            raise UserFacingError("无效的下载类型。")
+        selected = format_options(quality, media_type, video_format)
         import yt_dlp
         from accelerated_http import accelerated_downloads
         from yt_dlp.postprocessor.common import PostProcessor
@@ -43,7 +64,7 @@ def run(url: str, destination: str, quality: str, media_type: str = "video") -> 
         class CompletedFile(PostProcessor):
             def run(self, info):
                 path = Path(info["filepath"]).resolve()
-                if path.is_file():
+                if path.is_file() and path.suffix.lower() == "." + selected["final_ext"]:
                     final_files.append(str(path))
                 return [], info
 
@@ -67,13 +88,11 @@ def run(url: str, destination: str, quality: str, media_type: str = "video") -> 
                  downloaded=downloaded, total=total,
                  speed=data.get("speed"), eta=data.get("eta"))
 
-        selector = "bv*+ba/b" if quality == "best" else f"bv*[height<={quality}]+ba/b[height<={quality}]"
-        if media_type == "audio":
-            selector = "bestaudio/best"
         options = {
-            "format": selector,
-            "paths": {"home": str(folder)},
-            "outtmpl": {"default": "%(title).140B [%(id)s]" + (" audio" if media_type == "audio" else "") + ".%(ext)s"},
+            **selected,
+            # Separate intermediates so remuxing never deletes another format's completed file.
+            "paths": {"home": str(folder), "temp": str(folder / ".cy-downloads" / ("audio" if media_type == "audio" else video_format))},
+            "outtmpl": {"default": "%(title).140B [%(id)s]" + (" audio" if media_type == "audio" else " " + video_format.upper()) + ".%(ext)s"},
             "noplaylist": True,
             "playlistend": 1,
             "quiet": True,
@@ -92,11 +111,7 @@ def run(url: str, destination: str, quality: str, media_type: str = "video") -> 
             "cy_status": lambda message: emit("status", message=message),
             "overwrites": False,
             "continuedl": True,
-            "merge_output_format": "mkv",
         }
-        if media_type == "audio":
-            options["final_ext"] = "mp3"
-            options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}]
         node = root_dir() / "runtime/tools/node"
         if node.is_file():
             options["js_runtimes"] = {"node": {"path": str(node)}}
@@ -114,4 +129,4 @@ def run(url: str, destination: str, quality: str, media_type: str = "video") -> 
 
 
 if __name__ == "__main__":
-    raise SystemExit(run(*sys.argv[1:5]))
+    raise SystemExit(run(*sys.argv[1:6]))

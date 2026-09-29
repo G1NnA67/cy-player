@@ -93,6 +93,8 @@ class LanguageTests(unittest.TestCase):
         w = self.window()
         w.download_type.setCurrentIndex(1)
         self.assertFalse(w.quality.isEnabled())
+        self.assertFalse(w.video_format.isEnabled())
+        self.assertTrue(w.video_format.isHidden())
         w.set_language('zh')
         self.assertEqual(w.download_type.currentText(), '仅音频（MP3）')
         w.url.setText('https://youtu.be/example')
@@ -100,7 +102,7 @@ class LanguageTests(unittest.TestCase):
             process = process_type.return_value
             w.start_download()
             args = process.start.call_args.args[1]
-            self.assertEqual(args[-1], 'audio')
+            self.assertEqual(args[-2:], ['audio', 'mp4'])
             self.assertFalse(w.download_type.isEnabled())
             w.process = None
         w.set_download_busy(False)
@@ -114,6 +116,30 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(w.result_button.text(), '▷ Play File')
         w.download_type.setCurrentIndex(0)
         self.assertTrue(w.quality.isEnabled())
+
+    def test_video_format_persists_and_reaches_worker(self):
+        from unittest.mock import patch
+        w = self.window()
+        self.assertEqual(w.video_format.currentData(), 'mp4')
+        w.video_format.setCurrentIndex(w.video_format.findData('webm'))
+        w.set_language('zh')
+        self.assertEqual(w.video_format.currentData(), 'webm')
+        self.assertEqual(w.video_format_label.text(), '视频格式')
+        w.url.setText('https://youtu.be/example')
+        with patch('app.QProcess') as process_type:
+            w.start_download()
+            self.assertEqual(process_type.return_value.start.call_args.args[1][-2:], ['video', 'webm'])
+            self.assertFalse(w.video_format.isEnabled())
+            w.process = None
+        w.set_download_busy(False)
+        w.handle_worker_event({'event': 'failed', 'message': 'Requested format is not available'})
+        w.worker_finished(1, QProcess.NormalExit)
+        self.assertIn('换一种格式', w.download_status.text())
+        w.set_language('en')
+        self.assertIn('Try another format', w.download_status.text())
+        w.close()
+        self.assertEqual(read_settings()['video_format'], 'webm')
+        self.assertEqual(self.window().video_format.currentData(), 'webm')
 
     def test_static_texts_and_dynamic_error_states(self):
         w = self.window()
@@ -180,13 +206,16 @@ class LanguageTests(unittest.TestCase):
         fixture = ROOT/'tests/fixtures/播放测试.mkv'
         if not fixture.exists():
             import subprocess
+            from unittest.mock import patch
             from core import ffmpeg_executable
             fixture = Path(self.temp.name)/'fixture.mkv'
             subtitles = Path(self.temp.name)/'fixture.srt'
             subtitles.write_text('1\n00:00:00,000 --> 00:00:04,000\nSubtitle test\n')
-            subprocess.run([str(ffmpeg_executable()),'-v','error','-f','lavfi','-i',
+            with patch('core.root_dir', return_value=ROOT):
+                ffmpeg = ffmpeg_executable()
+            subprocess.run([str(ffmpeg),'-v','error','-f','lavfi','-i',
                             'testsrc2=size=320x180:rate=24','-i',str(subtitles),'-t','5',
-                            '-c:v','libx264','-c:s','srt',str(fixture)],check=True)
+                            '-c:v','mpeg4','-c:s','srt',str(fixture)],check=True)
         w = self.window()
         w.audio.setVolume(0)
         frames=[]

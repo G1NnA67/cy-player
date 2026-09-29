@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 APP_NAME = "CY Player"
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 
 def root_dir() -> Path:
@@ -82,18 +82,13 @@ def write_settings(settings: dict) -> None:
 
 
 def ffmpeg_executable() -> Path:
-    """Give yt-dlp a conventional ffmpeg filename; never install globally."""
-    import imageio_ffmpeg
-    source = Path(imageio_ffmpeg.get_ffmpeg_exe())
-    target = root_dir() / "runtime/tools/ffmpeg"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.is_symlink() and not target.exists():
-        target.unlink()
-    if not target.exists():
-        try:
-            target.symlink_to(source)
-        except FileExistsError:
-            pass  # Another worker may have prepared it concurrently.
+    """Use our source-built postprocessor, independently of old runtime symlinks."""
+    if getattr(sys, "frozen", False):
+        target = Path(sys._MEIPASS) / "media-tools/ffmpeg"
+    else:
+        target = root_dir() / "runtime/media-tools/ffmpeg"
+    if not target.is_file():
+        raise FileNotFoundError("FFmpeg is missing. Build tools/build_media_tools.py as described in README.md.")
     return target
 
 
