@@ -12,7 +12,9 @@ English | [简体中文](README.zh-CN.md)
 - Open or drag in local videos. Play, pause, seek, adjust volume and playback speed, and enter full screen.
 - Select embedded audio and subtitle tracks.
 - Paste a YouTube or Bilibili video URL, choose a quality limit and destination, monitor progress, cancel, and play the result.
-- One download at a time. Incomplete fragments are kept so yt-dlp can attempt to resume.
+- Choose **Video + audio** or **Audio only (MP3)**. Audio-only prefers a separate audio stream and saves a 192 kbps MP3; video quality controls do not apply.
+- Automatic downloads use up to four verified HTTP range connections, or four native stream fragments. Bilibili backup routes are checked where available; slow chunks can retry another verified route. Unsupported range downloads fall back to the standard downloader. Speed still depends on the site and connection.
+- One download at a time. Verified chunks and native partial files are kept so retrying the same link and download type can resume.
 
 Playback uses **PySide6 / Qt Multimedia with FFmpeg**. Downloads use **yt-dlp**, **FFmpeg**, and **Node.js** for YouTube JavaScript challenges. A file extension alone does not guarantee codec support.
 
@@ -76,3 +78,5 @@ Tests can run with `QT_QPA_PLATFORM=offscreen python -m unittest discover -p 'te
 Publish this source directory. Keep runtime dependencies, caches, build outputs, downloaded videos and personal settings out of the repository.
 
 See [THIRD_PARTY.md](THIRD_PARTY.md) for dependency sources and license information. The project owner has not yet selected a license for this project's original code.
+
+![Audio-only download](docs/download-audio-en.png)

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+build/
+dist/
+*.spec
+.env
+*.cy-parts/
+*.cy-assembling
+*.part
+cache/
+tmp/
+downloads/
+runtime/

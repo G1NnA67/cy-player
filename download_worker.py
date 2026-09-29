@@ -21,7 +21,7 @@ class QuietLogger:
         pass
 
 
-def run(url: str, destination: str, quality: str) -> int:
+def run(url: str, destination: str, quality: str, media_type: str = "video") -> int:
     prepare_environment()
     try:
         os.setsid()  # Cancel the worker and any FFmpeg child together.
@@ -33,7 +33,10 @@ def run(url: str, destination: str, quality: str) -> int:
         folder.mkdir(parents=True, exist_ok=True)
         if quality not in ("best", "1080", "720"):
             raise UserFacingError("无效的画质选项。")
+        if media_type not in ("video", "audio"):
+            raise UserFacingError("无效的下载类型。")
         import yt_dlp
+        from accelerated_http import accelerated_downloads
         from yt_dlp.postprocessor.common import PostProcessor
         final_files = []
 
@@ -48,7 +51,7 @@ def run(url: str, destination: str, quality: str) -> int:
         def progress(data):
             status = data.get("status")
             if status == "finished":
-                emit("processing", message="正在合并或整理视频…")
+                emit("processing", message="正在转换为 MP3…" if media_type == "audio" else "正在合并或整理视频…")
                 return
             if status != "downloading":
                 return
@@ -65,10 +68,12 @@ def run(url: str, destination: str, quality: str) -> int:
                  speed=data.get("speed"), eta=data.get("eta"))
 
         selector = "bv*+ba/b" if quality == "best" else f"bv*[height<={quality}]+ba/b[height<={quality}]"
+        if media_type == "audio":
+            selector = "bestaudio/best"
         options = {
             "format": selector,
             "paths": {"home": str(folder)},
-            "outtmpl": {"default": "%(title).140B [%(id)s].%(ext)s"},
+            "outtmpl": {"default": "%(title).140B [%(id)s]" + (" audio" if media_type == "audio" else "") + ".%(ext)s"},
             "noplaylist": True,
             "playlistend": 1,
             "quiet": True,
@@ -82,20 +87,26 @@ def run(url: str, destination: str, quality: str) -> int:
             "socket_timeout": 20,
             "retries": 3,
             "fragment_retries": 3,
+            "concurrent_fragment_downloads": 4,
+            "skip_unavailable_fragments": False,
+            "cy_status": lambda message: emit("status", message=message),
             "overwrites": False,
             "continuedl": True,
             "merge_output_format": "mkv",
         }
+        if media_type == "audio":
+            options["final_ext"] = "mp3"
+            options["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}]
         node = root_dir() / "runtime/tools/node"
         if node.is_file():
             options["js_runtimes"] = {"node": {"path": str(node)}}
         emit("status", message="正在读取视频信息…")
-        with yt_dlp.YoutubeDL(options) as downloader:
+        with accelerated_downloads(), yt_dlp.YoutubeDL(options) as downloader:
             downloader.add_post_processor(CompletedFile(), when="after_move")
             downloader.extract_info(url, download=True)
         if not final_files:
             raise UserFacingError("未找到完整的下载文件，请检查链接是否指向单个视频。")
-        emit("completed", path=final_files[-1])
+        emit("completed", path=final_files[-1], media_type=media_type)
         return 0
     except Exception as error:
         emit("failed", message=str(error).removeprefix("ERROR: "), code=getattr(error, "message_key", None))
@@ -103,4 +114,4 @@ def run(url: str, destination: str, quality: str) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(run(*sys.argv[1:4]))
+    raise SystemExit(run(*sys.argv[1:5]))

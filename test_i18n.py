@@ -88,6 +88,33 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(w.volume.toolTip(), 'Volume')
         self.assertEqual(w.quality.currentText(), 'Up to 720p')
 
+    def test_audio_selection_worker_arguments_and_completion(self):
+        from unittest.mock import patch
+        w = self.window()
+        w.download_type.setCurrentIndex(1)
+        self.assertFalse(w.quality.isEnabled())
+        w.set_language('zh')
+        self.assertEqual(w.download_type.currentText(), '仅音频（MP3）')
+        w.url.setText('https://youtu.be/example')
+        with patch('app.QProcess') as process_type:
+            process = process_type.return_value
+            w.start_download()
+            args = process.start.call_args.args[1]
+            self.assertEqual(args[-1], 'audio')
+            self.assertFalse(w.download_type.isEnabled())
+            w.process = None
+        w.set_download_busy(False)
+        self.assertFalse(w.quality.isEnabled())
+        output = Path(self.temp.name)/'audio.mp3'
+        output.write_bytes(b'test audio')
+        w.handle_worker_event({'event':'completed','path':str(output),'media_type':'audio'})
+        self.assertIn('音频已保存', w.download_status.text())
+        w.set_language('en')
+        self.assertIn('Your audio', w.download_status.text())
+        self.assertEqual(w.result_button.text(), '▷ Play File')
+        w.download_type.setCurrentIndex(0)
+        self.assertTrue(w.quality.isEnabled())
+
     def test_static_texts_and_dynamic_error_states(self):
         w = self.window()
         for (_, _), (key, _) in w._text_bindings.items():

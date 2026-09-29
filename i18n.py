@@ -1,6 +1,17 @@
 """Application-owned text. Media titles, file paths and upstream diagnostics stay intact."""
 LANGUAGES = {"en": "English", "zh": "简体中文"}
 ENGLISH = {
+    "下载内容": "Download",
+    "视频＋声音": "Video + audio",
+    "仅音频（MP3）": "Audio only (MP3)",
+    "仅音频保存为 MP3；有独立音轨时不下载画面。": "Audio-only saves an MP3; video is skipped when a separate audio stream is available.",
+    "▷ 播放文件": "▷ Play File",
+    "正在选择下载线路…": "Choosing a download route…",
+    "正在加速下载（最多 4 路连接）…": "Downloading with up to 4 connections…",
+    "加速不可用，正在使用普通下载…": "Using standard download for this stream…",
+    "正在转换为 MP3…": "Converting to MP3…",
+    "下载完成，音频已保存到所选文件夹。": "Download complete. Your audio is saved in the selected folder.",
+    "无效的下载类型。": "Invalid download type.",
     "你的桌面放映室": "Your desktop cinema",
     "▷    本地播放": "▷    Player",
     "↓    视频下载": "↓    Downloads",

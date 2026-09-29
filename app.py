@@ -12,7 +12,7 @@ from core import APP_NAME, VERSION, root_dir, prepare_environment, read_settings
 if __name__ == "__main__" and "--download-worker" in sys.argv:
     from download_worker import run
     i = sys.argv.index("--download-worker")
-    raise SystemExit(run(*sys.argv[i + 1:i + 4]))
+    raise SystemExit(run(*sys.argv[i + 1:i + 5]))
 
 from PySide6.QtCore import Qt, QUrl, QProcess, QTimer, Signal, QEvent
 from PySide6.QtGui import QDesktopServices, QFont, QKeySequence, QShortcut, QIcon
@@ -113,6 +113,7 @@ class PlayerWindow(QMainWindow):
         self.process = None
         self.worker_buffer = ""
         self.worker_decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self.active_download_type = "video"
         self.download_done = False
         self.download_cancelled = False
         self.last_worker_error = ""
@@ -221,6 +222,8 @@ class PlayerWindow(QMainWindow):
         self.language_picker.blockSignals(False)
         for (widget, method), (key, values) in self._text_bindings.items():
             getattr(widget, method)(self.t(key, **values))
+        for index, key in enumerate(("视频＋声音", "仅音频（MP3）")):
+            self.download_type.setItemText(index, self.t(key))
         for index, key in enumerate(("最高可用画质", "最高 1080p", "最高 720p")):
             self.quality.setItemText(index, self.t(key))
         self.update_tracks()
@@ -347,7 +350,14 @@ class PlayerWindow(QMainWindow):
         row.addWidget(self.choose_folder_button)
         form.addLayout(row)
         row = QHBoxLayout()
-        row.addWidget(self.make_label("画质", "muted"))
+        row.addWidget(self.make_label("下载内容", "muted"))
+        self.download_type = QComboBox()
+        for key, value in (("视频＋声音", "video"), ("仅音频（MP3）", "audio")):
+            self.download_type.addItem(self.t(key), value)
+        self.download_type.currentIndexChanged.connect(self.update_download_type)
+        row.addWidget(self.download_type)
+        self.quality_label = self.make_label("画质", "muted")
+        row.addWidget(self.quality_label)
         self.quality = QComboBox()
         for text, data in (("最高可用画质", "best"), ("最高 1080p", "1080"), ("最高 720p", "720")):
             self.quality.addItem(self.t(text), data)
@@ -357,6 +367,7 @@ class PlayerWindow(QMainWindow):
         self.start_button = self.make_button("↓ 开始下载", self.start_download, True)
         row.addWidget(self.start_button)
         form.addLayout(row)
+        form.addWidget(self.make_label("仅音频保存为 MP3；有独立音轨时不下载画面。", "muted", True))
         layout.addWidget(card)
         status_card = QFrame()
         status_card.setObjectName("card")
@@ -376,7 +387,7 @@ class PlayerWindow(QMainWindow):
         buttons = QHBoxLayout()
         self.cancel_button = self.make_button("取消下载", self.cancel_download)
         self.cancel_button.setEnabled(False)
-        self.result_button = self.make_button("▷ 播放视频", self.play_download, True)
+        self.result_button = self.make_button("▷ 播放文件", self.play_download, True)
         self.result_button.setEnabled(False)
         buttons.addWidget(self.cancel_button)
         self.details_button = self.make_button("查看原因", self.show_download_error)
@@ -398,7 +409,7 @@ class PlayerWindow(QMainWindow):
 
     def open_dialog(self):
         path, _ = QFileDialog.getOpenFileName(self, self.t("打开视频"), self.settings.get("last_folder", str(self.root)),
-            self.t("视频文件") + " (*.mp4 *.mkv *.mov *.webm *.avi *.m4v *.ts *.mts *.m2ts *.mpg *.mpeg *.flv *.wmv);;" + self.t("所有文件") + " (*)")
+            self.t("视频文件") + " (*.mp4 *.mkv *.mov *.webm *.avi *.m4v *.ts *.mts *.m2ts *.mpg *.mpeg *.flv *.wmv *.mp3 *.m4a *.ogg *.opus *.wav);;" + self.t("所有文件") + " (*)")
         if path:
             self.open_file(path)
 
@@ -539,6 +550,7 @@ class PlayerWindow(QMainWindow):
         except (ValueError, OSError) as error:
             self.text(self.download_status, str(error))
             return
+        self.active_download_type = self.download_type.currentData()
         self.download_done = False
         self.download_cancelled = False
         self.download_result = None
@@ -563,16 +575,23 @@ class PlayerWindow(QMainWindow):
         process.readyReadStandardError.connect(lambda: self.collect_stderr(process))
         process.finished.connect(self.worker_finished)
         process.errorOccurred.connect(self.worker_error)
-        args = ["--download-worker", url, str(folder), self.quality.currentData()]
+        args = ["--download-worker", url, str(folder), self.quality.currentData(), self.active_download_type]
         if not getattr(sys, "frozen", False):
             args.insert(0, str(Path(__file__).resolve()))
         process.setWorkingDirectory(str(self.root))
         process.start(sys.executable, args)
 
     def set_download_busy(self, busy):
-        for widget in (self.start_button, self.url, self.choose_folder_button, self.quality):
+        for widget in (self.start_button, self.url, self.choose_folder_button, self.download_type):
             widget.setEnabled(not busy)
+        self.quality.setEnabled(not busy and self.download_type.currentData() == "video")
         self.cancel_button.setEnabled(busy)
+
+    def update_download_type(self):
+        video = self.download_type.currentData() == "video"
+        self.quality.setEnabled(video and self.process is None)
+        self.quality_label.setVisible(video)
+        self.quality.setVisible(video)
 
     def collect_stderr(self, process):
         message = bytes(process.readAllStandardError()).decode("utf-8", "replace").strip()
@@ -597,7 +616,7 @@ class PlayerWindow(QMainWindow):
         if event in ("status", "processing", "completed", "failed"):
             self._progress_event = None
         if event in ("status", "processing"):
-            self.text(self.download_status, "正在读取视频信息…" if event == "status" else "正在合并或整理视频…")
+            self.text(self.download_status, data.get("message") or ("正在读取视频信息…" if event == "status" else "正在合并或整理视频…"))
             self.progress.setRange(0, 0)
         elif event == "warning":
             self.warning_text = data.get("message", "")
@@ -614,7 +633,7 @@ class PlayerWindow(QMainWindow):
             self.progress.setRange(0, 1000)
             self.progress.setValue(1000)
             self.literal(self.download_title, path.name)
-            self.text(self.download_status, "下载完成，视频已保存到所选文件夹。")
+            self.text(self.download_status, "下载完成，音频已保存到所选文件夹。" if data.get("media_type") == "audio" else "下载完成，视频已保存到所选文件夹。")
             self.result_button.setEnabled(True)
         elif event == "failed":
             self.last_worker_error = data.get("message", "未知错误")

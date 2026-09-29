@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 APP_NAME = "CY Player"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 def root_dir() -> Path:
